@@ -109,9 +109,9 @@ public OnPluginStart()
 		SetFailState("Could not load gamedata");
 	}
 	
-	//void CTFPlayer::ChangeTeam(int team, bool bAutoBalance, bool bSilent)
+	//void CBasePlayer::ChangeTeam( int iTeamNum, bool bAutoTeam, bool bSilent )
 	StartPrepSDKCall(SDKCall_Player);
-	PrepSDKCall_SetFromConf(gamedata, SDKConf_Virtual, "CTFPlayer::ChangeTeam3Arg");
+	PrepSDKCall_SetFromConf(gamedata, SDKConf_Virtual, "CBasePlayer::ChangeTeam");
 	PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain);
 	PrepSDKCall_AddParameter(SDKType_Bool, SDKPass_Plain);
 	PrepSDKCall_AddParameter(SDKType_Bool, SDKPass_Plain);
@@ -147,15 +147,15 @@ public MRESReturn:HandleScrambleTeams(Handle:hParams)
 	// scramble logic goes here
 	
 	// As far as I can tell, both these args should be true during a scramble
-	// ChangeTeam(client, team, true, true); 
+	// ChangeTeam(client, iTeamNum, true, true);
 	return MRES_Supercede;
 }
 
 // If you're using this, one or both of the last two args should be true,
 // or else you should just use ChangeClientTeam
-stock SwitchTeam(client, team, bool:bAutoBalance, bool:bSilent)
+stock SwitchTeam(client, iTeamNum, bool:bAutoTeam, bool:bSilent)
 {
-	SDKCall(g_Call_ChangeTeam, client, team, bAutoBalance, bSilent);
+	SDKCall(g_Call_ChangeTeam, client, iTeamNum, bAutoTeam, bSilent);
 }
 
 stock SetScrambleTeams(bool:bScrambleTeams)

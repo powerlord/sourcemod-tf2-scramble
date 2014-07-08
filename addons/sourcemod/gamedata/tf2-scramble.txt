@@ -6,7 +6,7 @@
 		"Offsets"
 		
 		{
-			"CTFPlayer::ChangeTeam3Arg"
+			"CBasePlayer::ChangeTeam"
 			{
 				"windows"	"418"
 				"linux"		"419"
