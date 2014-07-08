@@ -162,3 +162,74 @@ stock SetScrambleTeams(bool:bScrambleTeams)
 {
 	SDKCall(g_Call_SetScramble, bScrambleTeams);
 }
+
+
+// Some stocks that I may move to a .inc later
+stock PrintValveTranslation(clients,
+						    maxClients,
+						    msg_dest,
+						    const String:msg_name[],
+						    const String:param1[]="",
+						    const String:param2[]="",
+						    const String:param3[]="",
+						    const String:param4[]="")
+{
+	new Handle:bf = StartMessage("TextMsg", clients, numClients, USERMSG_RELIABLE)
+	
+	if (GetUserMessageType() == UM_Protobuf)
+	{
+		PbSetInt(bf, "msg_dest", msg_dest);
+		PbAddString(bf, "params", msg_name);
+		
+		PbAddString(bf, "params", param1);
+		PbAddString(bf, "params", param2);
+		PbAddString(bf, "params", param3);
+		PbAddString(bf, "params", param4);
+	}
+	else
+	{
+		BfWriteByte(bf, msg_dest);
+		BfWriteString(bf, msg_name);
+		
+		BfWriteString(bf, param1);
+		BfWriteString(bf, param2);
+		BfWriteString(bf, param3);
+		BfWriteString(bf, param4);
+	}
+	
+	EndMessage();
+}
+
+stock PrintValveTranslationToAll(msg_dest,
+								const String:msg_name[],
+								const String:param1[]="",
+								const String:param2[]="",
+								const String:param3[]="",
+								const String:param4[]="")
+{
+	new total = 0;
+	new clients[MaxClients];
+	for (new i=1; i<=MaxClients; i++)
+	{
+		if (IsClientConnected(i))
+		{
+			clients[total++] = i;
+		}
+	}
+	PrintValveTranslation(clients, total, msg_dest, msg_name, param1, param2, param3, param4);
+}
+
+stock PrintValveTranslationToOne(client,
+								msg_dest,
+								const String:msg_name[],
+								const String:param1[]="",
+								const String:param2[]="",
+								const String:param3[]="",
+								const String:param4[]="")
+{
+	new players[1];
+	
+	players[0] = client;
+	
+	PrintValveTranslation(players, 1, msg_dest, msg_name, param1, param2, param3, param4);
+}
