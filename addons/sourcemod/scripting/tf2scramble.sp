@@ -3,6 +3,13 @@
  * =============================================================================
  * TF2 Scramble
  * An alternative to GScramble
+ * This plugin may work on other games just by editing AskPluginLoad2 to remove
+ * the game restriction and OnConfigsExecuted to remove the game mode checks...
+ * hasn't been tested, though.
+ * 
+ * However, it definitely doesn't work on games that use more than two player
+ * teams... sorry Fortress Forever.  Then again, you're looking into moving to
+ * a non-Source engine anyway... traitors.
  *
  * TF2 Scramble (C)2014 Powerlord (Ross Bemrose).  All rights reserved.
  * =============================================================================
@@ -37,8 +44,9 @@
 
 #undef REQUIRE_PLUGIN
 #include <nativevotes>
-#include <gameme>
-#include <hlxce-sm-api>
+// Move these to subplugins
+//#include <gameme>
+//#include <hlxce-sm-api>
 
 #pragma semicolon 1
 #define VERSION "0.0.1"
@@ -55,6 +63,11 @@
 
 new EngineVersion:g_EngineVersion;
 
+// Generic is used for ItemTest and Tutorial maps
+// CTF for CTF, SD, and MvM
+// CP for A/D CP, 5CP, and TC
+// Payload for PL and PLR
+// Arena for arena
 enum
 {
 	GameType_Generic,
@@ -93,17 +106,27 @@ new Handle:g_Cvar_Immunity;
 new Handle:g_Cvar_Timeleft;
 new Handle:g_Cvar_Autobalance_Time;
 new Handle:g_Cvar_Autobalance_ForceTime;
+new Handle:g_Cvar_Scramble_Percent;
+new Handle:g_Cvar_NativeVotes;
+new Handle:g_Cvar_NativeVotes_Menu;
 
 // Valve CVars
 new Handle:g_Cvar_Mp_Autobalance; // mp_autobalance
 new Handle:g_Cvar_Mp_Scrambleteams_Auto; // mp_scrambleteams_auto
 new Handle:g_Cvar_Sv_Vote_Scramble; // sv_vote_issue_scramble_teams_allowed
 new Handle:g_Cvar_Mp_BonusRoundTime; // mp_bonusroundtime
-
+new Handle:g_Cvar_Mp_TeamsUnbalance; // mp_teams_unbalance_limit
 new RoundEndType:g_RoundEndType = RoundEnd_Immediate;
 new g_Tcpm = INVALID_ENT_REFERENCE;
 
 new Handle:g_Timer_Autobalance;
+
+new bool:g_bWaitingForPlayers = false;
+new bool:g_bWeAreBalancing = false;
+
+// Optional extensions/plugins
+new bool:g_bUseNativeVotes = false;
+new bool:g_bNativeVotesRegisteredMenus = false;
 
 public Plugin:myinfo = {
 	name			= "TF2 Scramble",
@@ -147,10 +170,13 @@ public OnPluginStart()
 	g_Cvar_Balance = CreateConVar("tf2scramble_balance", "1", "Enable TF2 Scramble's balance abilities?", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_Cvar_VoteScramble = CreateConVar("tf2scramble_vote", "1", "Enable our own vote scramble?  Will disable Valve's votescramble.", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_Cvar_ScrambleMode = CreateConVar("tf2scramble_mode", "1", "Scramble Mode: 0 = Random, 1 = Score, 2 = Score Per Minute, 3 = Kill/Death Ratio, 4 = Use Subplugin settings (acts like 0 if no subplugins loaded)", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 0.0, true, 4.0);
-	g_Cvar_Immunity = CreateConVar("tf2scramble_immunity", "1", "Should Medics with 50%+ Uber or Engineers with Level 2+ Buildings be immune to autobalance?  Note: Only applies to in-round scrambles and if we run out of other players, they WILL be balanced.", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 0.0, true, 7.0);
-	g_Cvar_Timeleft = CreateConVar("tf2scramble_timeleft", "60", "If there is less than this much or less sectonds left on a timer, stop balancing. Ignored on Arena and KOTH.", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 0.0, true, 7.0);
-	g_Cvar_Autobalance_Time = CreateConVar("tf2scramble_autobalance_time", "5", "Seconds before autobalance should occur once detected... only for dead players.", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 5.0, true, 30.0);
-	g_Cvar_Autobalance_ForceTime = CreateConVar("tf2scramble_autobalance_forcetime", "15", "Seconds before autobalance should be forced if no one on a team dies.", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 5.0, true, 30.0);
+	g_Cvar_Immunity = CreateConVar("tf2scramble_immunity", "1", "Should Medics with 50%+ Uber or Engineers with Level 2+ Buildings be immune to autobalance?  Note: Only applies to in-round scrambles and if we run out of other players, they WILL be balanced.", FCVAR_PLUGIN, true, 0.0, true, 7.0);
+	g_Cvar_Timeleft = CreateConVar("tf2scramble_timeleft", "60", "If there is less than this much or less sectonds left on a timer, stop balancing. Ignored on Arena and KOTH.", FCVAR_PLUGIN, true, 0.0, true, 7.0);
+	g_Cvar_Autobalance_Time = CreateConVar("tf2scramble_autobalance_time", "5", "Seconds before autobalance should occur once detected... only for dead players.", FCVAR_PLUGIN, true, 5.0, true, 30.0);
+	g_Cvar_Autobalance_ForceTime = CreateConVar("tf2scramble_autobalance_forcetime", "15", "Seconds before autobalance should be forced if no one on a team dies.", FCVAR_PLUGIN, true, 5.0, true, 30.0);
+	g_Cvar_Scramble_Percent = CreateConVar("tf2scramble_scramble_percent", "0.55", "What percentage of players should be scrambled?", FCVAR_PLUGIN, true, 0.10, true, 0.90);
+	g_Cvar_NativeVotes = CreateConVar("tf2scramble_nativevotes", "1", "Use NativeVotes for votes if available? (Why would you ever disable this?)", FCVAR_PLUGIN, true, 0.0, true, 1.0);
+	g_Cvar_NativeVotes_Menu = CreateConVar("tf2scramble_nativevotes_menu", "1", "Put ScrambleTeams vote in NativeVotes menu?", FCVAR_PLUGIN, true, 0.0, true, 1.0);
 	
 	// Add more cvars
 	
@@ -159,6 +185,13 @@ public OnPluginStart()
 	g_Cvar_Mp_Scrambleteams_Auto = FindConVar("mp_scrambleteams_auto");
 	g_Cvar_Sv_Vote_Scramble = FindConVar("sv_vote_issue_scramble_teams_allowed");
 	g_Cvar_Mp_BonusRoundTime = FindConVar("mp_bonusroundtime");
+	g_Cvar_Mp_TeamsUnbalance = FindConVar("mp_teams_unbalance_limit");
+	
+	// Events
+	HookEvent("round_start", Event_Round_Start);
+	HookEventEx("teamplay_round_start", Event_Round_Start);
+	HookEvent("round_end", Event_Round_End);
+	HookEventEx("teamplay_round_win", Event_Round_End);
 	
 	LoadTranslations("tf2scramble.phrases");
 	LoadTranslations("common.phrases");
@@ -199,15 +232,28 @@ public OnMapStart()
 
 public OnConfigsExecuted()
 {
-	new bool:isMvM = bool:GameRules_GetProp("m_bPlayingMannVsMachine");
+	g_bUseNativeVotes = GetConVarBool(g_Cvar_NativeVotes) && LibraryExists("nativevotes");
 	
-	new gameType = GameRules_GetProp("m_nGameType");
-	
-	// off if we're in Arena, MvM, or if the cvar says we're off
-	if (gameType == GameType_Arena || isMvM || !GetConVarBool(g_Cvar_Enabled))
+	if (g_EngineVersion == Engine_TF2)
 	{
-		g_Enabled = false;
-		return;
+		new bool:isMvM = bool:GameRules_GetProp("m_bPlayingMannVsMachine");
+		
+		new gameType = GameRules_GetProp("m_nGameType");
+		
+		// off if we're in Arena, MvM, or if the cvar says we're off
+		if (gameType == GameType_Arena || isMvM || !GetConVarBool(g_Cvar_Enabled))
+		{
+			g_Enabled = false;
+			return;
+		}
+	}
+	else
+	{
+		if (!GetConVarBool(g_Cvar_Enabled))
+		{
+			g_Enabled = false;
+			return;
+		}
 	}
 	
 	g_Enabled = true;
@@ -238,18 +284,105 @@ public OnConfigsExecuted()
 	}
 }
 
+public OnLibraryAdded(const String:name[])
+{
+	if (StrEqual(name, "nativevotes"))
+	{
+		if (GetConVarBool(g_Cvar_NativeVotes))
+		{
+			g_bUseNativeVotes = true;
+			
+			if (g_Enabled)
+			{
+				// Delay this after experience with DHooks requiring a slight delay before it was "ready"
+				CreateTimer(0.2, Timer_CheckNativeVotes);
+			}
+		}
+	}
+}
+
+public OnLibraryRemoved(const String:name[])
+{
+	if (StrEqual(name, "nativevotes"))
+	{
+		g_bUseNativeVotes = false;
+		
+		if (g_bNativeVotesRegisteredMenus)
+		{
+			NativeVotes_UnregisterVoteCommand("ScrambleTeams", NativeVotes_Menu);
+			g_bNativeVotesRegisteredMenus = false;
+		}
+	}
+}
+
+public Action:Timer_CheckNativeVotes(Handle:Timer)
+{
+	if (!g_bUseNativeVotes || g_bNativeVotesRegisteredMenus)
+		return Plugin_Stop;
+
+	if (!GetConVarBool(g_Cvar_NativeVotes_Menu) || GetFeatureStatus(FeatureType_Native, "NativeVotes_RegisterVoteCommand") != FeatureStatus_Available)
+		return Plugin_Stop;
+	
+	NativeVotes_RegisterVoteCommand("ScrambleTeams", NativeVotes_Menu);
+	
+	g_bNativeVotesRegisteredMenus = true;
+	
+	return Plugin_Stop;
+}
+
+public Action:NativeVotes_Menu(client, const String:voteCommand[], const String:voteArgument[], NativeVotesKickType:kickType, target)
+{
+	if (!IsFakeClient(client))
+	{
+		new ReplySource:old = SetCmdReplySource(SM_REPLY_TO_CHAT);
+
+		// start vote
+
+		SetCmdReplySource(old);
+	}
+	
+	return Plugin_Handled;
+}
+
+public Action:OnClientSayCommand(client, const String:command[], const String:sArgs[])
+{
+	if (StrEqual(command, "votescramble", false))
+	{
+		// Do votescramble action
+		return Plugin_Handled;
+	}
+	
+	return Plugin_Continue;
+}
+
+public TF2_OnWaitingForPlayersStart()
+{
+	g_bWaitingForPlayers = true;
+}
+
 public TF2_OnWaitingForPlayersEnd()
 {
+	g_bWaitingForPlayers = false;
 	//ServerCommand("mp_scrambleteams");
 }
 
 public Event_Round_Start(Handle:event, const String:name[], bool:dontBroadcast)
 {
+	if (!g_Enabled)
+	{
+		return;
+	}
+	
 	g_Timer_Autobalance = CreateTimer(5.0, Timer_Autobalance, _, TIMER_REPEAT);
 }
 
 public Event_Round_End(Handle:event, const String:name[], bool:dontBroadcast)
 {
+	if (!g_Enabled)
+	{
+		return;
+	}
+	
 	CloseHandle(g_Timer_Autobalance);
 	
 	if (ShouldScrambleTeams())
@@ -305,13 +438,29 @@ stock ForceScramble()
 	PrintValveTranslationToAll(HUD_PRINTCONSOLE, pFormat, strRestartDelay);
 	
 	TF2_SendScrambleAlert();
+	
+	// Logic to start timer before forcing scramble here
 }
 
 public Action:Timer_Autobalance(Handle:Timer)
 {
+	// Are we in a position to allow balancing?
 	if (!ShouldAllowBalance())
 	{
 		return Plugin_Continue;
+	}
+	
+	// We already determined teams were unbalanced and are waiting the delay period
+	// This logic should probably move to its OWN timer, which is just checked to see if it needs canceling here.
+	if (g_bWeAreBalancing)
+	{
+		BalanceTeams();
+		return Plugin_Continue;
+	}
+	
+	if (!AreTeamsBalanced())
+	{
+		// Teams are now unbalanced
 	}
 	
 	return Plugin_Continue;
@@ -319,8 +468,12 @@ public Action:Timer_Autobalance(Handle:Timer)
 
 bool:ShouldAllowBalance()
 {
-	// Only run if round is running.  This has a side effect of not running during waiting for players,
-	// Sudden Death, or Arena (which counts as Sudden Death)
+	if (g_bWaitingForPlayers)
+	{
+		return false;
+	}
+	
+	// Only run if round is running.  This has a side effect of not running during Sudden Death or Arena (which counts as Sudden Death)
 	new RoundState:state = GameRules_GetRoundState();
 	if (state != RoundState_RoundRunning)
 	{
@@ -357,7 +510,7 @@ bool:ShouldAllowBalance()
 			
 			// Check the time remaining
 			found = true;
-			new Float:timeRemaining = GetEntPropFloat(timer, Prop_Send, "m_flTimeRemaining");
+			new Float:timeRemaining = GetEntPropFloat(timer, Prop_Send, "m_flTimerEndTime") - GetGameTime();
 			if (RoundFloat(timeRemaining) < timelimit)
 			{
 				return false;
@@ -365,8 +518,67 @@ bool:ShouldAllowBalance()
 		}
 	}
 	
-	
 	return true;	
+}
+
+bool:AreTeamsBalanced()
+{
+	new unbalanceLimit = GetConVarInt(g_Cvar_Mp_TeamsUnbalance);
+	if (unbalanceLimit == 0)
+	{
+		return true;
+	}
+
+	new teamCount = GetTeamCount();
+	new teamCounts[teamCount];
+	
+	for (new i = 0; i < teamCount; i++)
+	{
+		teamCounts[i] = GetTeamClientCount(i);
+	}
+	
+	// > 2 is so that we only process where i isn't the last team
+	// Since 0 and 1 aren't player teams... unassigned and spectator...
+	for (new i = teamCount - 1; i > 2 ; i++)
+	{
+		new diff = 0;
+
+		if (teamCounts[i] > teamCounts[i-1])
+		{
+			diff = teamCounts[i] - teamCounts[i-1];
+		}
+		else
+		{
+			diff = teamCounts[i-1] - teamCounts[i];
+		}
+		
+		if (diff > unbalanceLimit)
+		{
+			return false;
+		}
+	}
+		
+	return true;
+}
+
+BalanceTeams()
+{
+	new teamCount = GetTeamCount();
+	
+	
+	new teams[4][MaxClients];
+	new teamCounts[4] = { 0, ... };
+	
+	for (new client = 1; client <= MaxClients; client++)
+	{
+		if (IsClientInGame(client))
+		{
+			new team = GetClientTeam(client);
+			teams[team][teamCounts[team]] = client;
+			teamCounts[team]++;
+		}
+	}
+	
 }
 
 // void CTeamplayRules::HandleScrambleTeams( void )
@@ -497,4 +709,39 @@ stock PrintValveTranslationToOne(client,
 	players[0] = client;
 	
 	PrintValveTranslation(players, 1, msg_dest, msg_name, param1, param2, param3, param4);
+}
+
+stock GetTimeRemaining(timer)
+{
+	if (!IsValidEntity(timer))
+	{
+		return -1;
+	}
+	
+	decl String:classname[64];
+	GetEntityClassname(timer, classname, sizeof(classname));
+	if (strcmp(classname, "team_round_timer") != 0)
+	{
+		return -1;
+	}
+	
+	new Float:flSecondsRemaining;
+	
+	if (GetEntProp(timer, Prop_Send, "m_bStopWatchTimer") && GetEntProp(timer, Prop_Send, "m_bInCaptureWatchState"))
+	{
+		flSecondsRemaining = GetEntPropFloat(timer, Prop_Send, "m_flTotalTime");
+	}
+	else
+	{
+		if (GetEntProp(timer, Prop_Send, "m_bTimerPaused"))
+		{
+			flSecondsRemaining = GetEntPropFloat(timer, Prop_Send, "m_flTimeRemaining");
+		}
+		else
+		{
+			flSecondsRemaining = GetEntPropFloat(timer, Prop_Send, "m_flTimerEndTime") - GetGameTime();
+		}
+	}
+	
+	return RoundFloat(flSecondsRemaining);
 }
