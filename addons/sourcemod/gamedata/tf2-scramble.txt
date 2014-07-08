@@ -1,0 +1,28 @@
+"Games"
+{
+	
+	"tf"
+	{
+		"Offsets"
+		
+		{
+			"CTFPlayer::ChangeTeam3Arg"
+			{
+				"windows"	"418"
+				"linux"		"419"
+			}
+
+			"CTeamplayRules::SetScrambleTeams"
+			{
+				"windows"	"160"
+				"linux"		"161"
+			}
+
+			"CTeamplayRules::HandleScrambleTeams"
+			{
+				"windows"	"161"
+				"linux"		"162"
+			}
+		}
+	}
+}
