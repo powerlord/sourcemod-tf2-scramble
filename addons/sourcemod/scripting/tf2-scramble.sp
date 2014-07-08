@@ -53,6 +53,7 @@ new Handle:g_Hook_HandleScramble;
 new Handle:g_Cvar_Enabled;
 new Handle:g_Cvar_Scramble;
 new Handle:g_Cvar_Balance;
+new Handle:g_Cvar_VoteScramble;
 
 // Valve CVars
 new Handle:g_Cvar_Mp_Autobalance; // mp_autobalance
@@ -96,6 +97,7 @@ public OnPluginStart()
 	g_Cvar_Enabled = CreateConVar("tf2_scramble_enable", "1", "Enable TF2 Scramble?", FCVAR_PLUGIN|FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	g_Cvar_Scramble = CreateConVar("tf2_scramble_scramble", "1", "Enable TF2 Scramble's scramble abilities?", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_Cvar_Balance = CreateConVar("tf2_scramble_balance", "1", "Enable TF2 Scramble's balance abilities?", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_Cvar_VoteScramble = CreateConVar("tf2_scramble_vote", "1", "Enable our own vote scramble?  Will disable Valve's votescramble.", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	
 	// Add more cvars
 	
@@ -136,6 +138,39 @@ public OnMapStart()
 	DHookGamerules(g_Hook_HandleScramble, false);
 }
 
+public OnConfigsExecuted()
+{
+	if (!GetConVarBool(g_Cvar_Enabled))
+	{
+		return;
+	}
+	
+	// Disable some Valve CVars based on our CVars.
+	if (GetConVarBool(g_Cvar_Balance))
+	{
+		if (GetConVarBool(g_Cvar_Mp_Autobalance))
+		{
+			SetConVarBool(g_Cvar_Mp_Autobalance, false);
+			LogMessage("Disabled mp_autobalance.");
+		}
+	}
+	
+	if (GetConVarBool(g_Cvar_Scramble))
+	{
+		if (GetConVarBool(g_Cvar_Mp_Scrambleteams_Auto))
+		{
+			SetConVarBool(g_Cvar_Mp_Scrambleteams_Auto, false);
+			LogMessage("Disabled mp_scrambleteams_auto.");
+		}
+		
+		if (GetConVarBool(g_Cvar_VoteScramble) && GetConVarBool(g_Cvar_Sv_Vote_Scramble))
+		{
+			SetConVarBool(g_Cvar_Sv_Vote_Scramble, false);
+			LogMessage("Disabled sv_vote_issue_scramble_teams_allowed.");
+		}
+	}
+}
+
 // void CTeamplayRules::HandleScrambleTeams( void )
 public MRESReturn:HandleScrambleTeams(Handle:hParams)
 {
@@ -153,16 +188,17 @@ public MRESReturn:HandleScrambleTeams(Handle:hParams)
 
 // If you're using this, one or both of the last two args should be true,
 // or else you should just use ChangeClientTeam
+//void CBasePlayer::ChangeTeam( int iTeamNum, bool bAutoTeam, bool bSilent )
 stock SwitchTeam(client, iTeamNum, bool:bAutoTeam, bool:bSilent)
 {
 	SDKCall(g_Call_ChangeTeam, client, iTeamNum, bAutoTeam, bSilent);
 }
 
-stock SetScrambleTeams(bool:bScrambleTeams)
+//void CTeamplayRules::SetScrambleTeams( bool bScramble )
+stock SetScrambleTeams(bool:bScramble)
 {
-	SDKCall(g_Call_SetScramble, bScrambleTeams);
+	SDKCall(g_Call_SetScramble, bScramble);
 }
-
 
 // Some stocks that I may move to a .inc later
 stock PrintValveTranslation(clients,
