@@ -833,6 +833,11 @@ GetPlayerBalanceValues(team, players[][], bool:force = false)
 	{
 		new immunityTime = GetConVarInt(g_Cvar_Immunity_Time);
 		
+		if (!IsClientInGame(client))
+		{
+			continue;
+		}
+		
 		// Yes, this is meant to be ++, index is the OLD value
 		// Dead players are always counted
 		if (!IsPlayerAlive(client))
