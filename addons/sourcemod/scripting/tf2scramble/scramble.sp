@@ -40,33 +40,39 @@
  * Version: $Id$
  */
 
- enum ScrambleType
- {
+new String:g_ScrambleSounds[][] = { "vo/announcer_AM_TeamScramble01.wav", "vo/announcer_AM_TeamScramble02.wav", "vo/announcer_AM_TeamScramble03.wav" };
+#define SCRAMBLE_CHANNEL SNDCHAN_VOICE2
+#define SCRAMBLE_VOLUME SNDVOL_NORMAL
+#define SCRAMBLE_LEVEL SNDLEVEL_NORMAL
+#define SCRAMBLE_PITCH SNDPITCH_NORMAL
+ 
+enum ScrambleType
+{
 	Scramble_Random,
 	Scramble_Points,
 	Scramble_PointsPerMin,
 	Scramble_KillDeathRatio,
 	Scramble_Plugin
- }
+}
 
- new g_PlayerConnectTime[MAXPLAYERS+1];
+new g_PlayerConnectTime[MAXPLAYERS+1];
  
- stock SetPlayerConnectTime(client)
- {
+stock SetPlayerConnectTime(client)
+{
 	g_PlayerConnectTime[client] = GetTime();
- }
+}
  
- stock ClearPlayerConnectTime(client)
- {
+stock ClearPlayerConnectTime(client)
+{
 	g_PlayerConnectTime[client] = 0;
- }
+}
  
- stock GetPlayerConnectTime(client)
- {
+stock GetPlayerConnectTime(client)
+{
 	return g_PlayerConnectTime[client];
- }
+}
  
- PostRoundScrambleCheck()
+PostRoundScrambleCheck()
 {
 	if (ShouldScrambleTeams())
 	{
@@ -166,9 +172,13 @@ public MRESReturn:HandleScrambleTeams(Handle:hParams)
 		new totalPlayers = teamCounts[2] + teamCounts[3];
 		new playersToMove = RoundFloat(totalPlayers * GetConVarFloat(g_Cvar_Scramble_Percent));
 		// If may seem odd getting the balance count, but this is how many players we MUST move to one team in addition to moving equal(ish) numbers from both teams.
-		new balanceCount = (sortedTeamCounts[0][Sorted_TeamCount] - sortedTeamCounts[1][Sorted_TeamCount]) / 2; // We switch half as many players
-		if (playersToMove > balanceCount)
+		new balanceCount = (sortedTeamCounts[0][Sorted_TeamCount] - sortedTeamCounts[1][Sorted_TeamCount]) / 2;
+		
+		new bool:oddPlayerCount = (totalPlayers % 2 != 0);
+		
+		if (playersToMove >= balanceCount)
 		{
+			// Since we're already moving the balanced players, we need to move that many LESS players afterwards
 			playersToMove -= balanceCount;
 		}
 		
@@ -176,27 +186,27 @@ public MRESReturn:HandleScrambleTeams(Handle:hParams)
 		{
 			case Scramble_Random:
 			{
-				switched = TwoTeam_ScrambleByRandom(playersToMove, balanceCount, sortedTeamCounts[1][Sorted_TeamCount]);
+				switched = ScrambleByRandom(playersToMove, balanceCount, sortedTeamCounts[0][Sorted_TeamNum], sortedTeamCounts[1][Sorted_TeamNum], oddPlayerCount);
 			}
 			
 			case Scramble_Points:
 			{
-				switched = TwoTeam_ScrambleByPoints(playersToMove, balanceCount, sortedTeamCounts[1][Sorted_TeamCount]);
+				switched = ScrambleByPoints(playersToMove, balanceCount, sortedTeamCounts[0][Sorted_TeamNum], sortedTeamCounts[1][Sorted_TeamNum], oddPlayerCount);
 			}
 			
 			case Scramble_PointsPerMin:
 			{
-				switched = TwoTeam_ScrambleByPointsPerMinute(playersToMove, balanceCount, sortedTeamCounts[1][Sorted_TeamCount]);
+				switched = ScrambleByPointsPerMinute(playersToMove, balanceCount, sortedTeamCounts[0][Sorted_TeamNum], sortedTeamCounts[1][Sorted_TeamNum], oddPlayerCount);
 			}
 			
 			case Scramble_KillDeathRatio:
 			{
-				switched = TwoTeam_ScrambleByKDR(playersToMove, balanceCount, sortedTeamCounts[1][Sorted_TeamCount]);
+				switched = ScrambleByKDR(playersToMove, balanceCount, sortedTeamCounts[0][Sorted_TeamNum], sortedTeamCounts[1][Sorted_TeamNum], oddPlayerCount);
 			}
 			
 			case Scramble_Plugin:
 			{
-				switched = TwoTeam_ScrambleByPlugin(playersToMove, balanceCount, sortedTeamCounts[1][Sorted_TeamCount]);
+				switched = ScrambleByPlugin(playersToMove, balanceCount, sortedTeamCounts[0][Sorted_TeamNum], sortedTeamCounts[1][Sorted_TeamNum], oddPlayerCount);
 			}
 		}
 	}
@@ -204,6 +214,7 @@ public MRESReturn:HandleScrambleTeams(Handle:hParams)
 	{
 		// Worry about more teams later
 	}
+
 	
 
 	// As far as I can tell, the last arg should be true during a balance/scramble
@@ -211,63 +222,79 @@ public MRESReturn:HandleScrambleTeams(Handle:hParams)
 	return MRES_Supercede;
 }
 
-TwoTeam_ScrambleByRandom(playersToMove, playersToBalance, teamToBalanceTo)
+ScrambleByRandom(playersToMove, playersToBalance, teamToBalanceFrom, teamToBalanceTo, bool:oddPlayerCount)
 {
-	new switched;
-	new team1Players[MaxClients];
-	new team2Players[MaxClients];
+	new switched = 0;
+	new teamPlayers[2][MaxClients];
+	new teamCounts[2];
 	
-	new count1 = GetPlayers(PLAYER_TEAM_1, team1Players);
-	new count2 = GetPlayers(PLAYER_TEAM_2, team2Players);
-	
-	ShuffleArray(team1Players, count1);
-	ShuffleArray(team2Players, count2);
-	
-	new team1Moved = 0;
-	new team2Moved = 0;
-	
-	if (teamToBalanceTo == PLAYER_TEAM_1)
+	for (new i = 0; i < sizeof(teamPlayers); i++)
 	{
-		for (new i = 0; i < playersToBalance; i++)
-		{
-			SwitchTeam(team1Players[i], PLAYER_TEAM_2, false, true);
-		}
-		team1Moved = playersToBalance;
-	}
-	else
-	{
-		for (new i = 0; i < playersToBalance; i++)
-		{
-			SwitchTeam(team2Players[i], PLAYER_TEAM_1, false, true);
-		}
-		team2Moved = playersToBalance;
+		teamCounts[i] = GetPlayers(i+2, teamPlayers[i]);
+		ShuffleArray(teamPlayers[i], teamCounts[i]);
 	}
 	
-	// Remaining move logic here
+	new teamMoved[2] = { 0, ... };
+	
+	for (new i = 0; i < playersToBalance; i++)
+	{
+		SwitchTeam(teamPlayers[teamToBalanceFrom][i], teamToBalanceTo, false, true);
+		switched++;
+	}
+	
+	teamMoved[teamToBalanceFrom] = playersToBalance;
+	
+	new playerEachToMove = playersToMove / 2;
+	
+	for (new i = 0; i < sizeof(teamPlayers); i++)
+	{
+		new team = i + 2;
+		new otherteam = team == 2 ? 3 : 2;
+
+		for (new j = 0; j < playerEachToMove; j++)
+		{
+			// We don't need the value of j, it's just to loop the correct number of times
+			SwitchTeam(teamPlayers[team][teamMoved[team]++], otherteam, false, true);
+			switched++;
+		}
+	}
+	
+	// balanceCount was an odd number, so teams were uneven after balancing
+	if (switched < playersToMove && oddPlayerCount)
+	{
+		SwitchTeam(teamPlayers[teamToBalanceFrom][teamMoved[teamToBalanceFrom]++], teamToBalanceTo, false, true);
+		switched++;
+	}
+	
+	return switched;
 }
 
-TwoTeam_ScrambleByPoints(playersToMove, playersToBalance, teamToBalanceTo)
+ScrambleByPoints(playersToMove, playersToBalance, teamToBalanceFrom, teamToBalanceTo, bool:oddPlayerCount)
 {
 	new switched;
 	
+	return switched;
 }
 
-TwoTeam_ScrambleByPointsPerMinute(playersToMove, playersToBalance, teamToBalanceTo)
+ScrambleByPointsPerMinute(playersToMove, playersToBalance, teamToBalanceFrom, teamToBalanceTo, bool:oddPlayerCount)
+{
+	new switched;
+
+	return switched;
+}
+
+ScrambleByKDR(playersToMove, playersToBalance, teamToBalanceFrom, teamToBalanceTo, bool:oddPlayerCount)
 {
 	new switched;
 	
+	return switched;
 }
 
-TwoTeam_ScrambleByKDR(playersToMove, playersToBalance, teamToBalanceTo)
+ScrambleByPlugin(playersToMove, playersToBalance, teamToBalanceFrom, teamToBalanceTo, bool:oddPlayerCount)
 {
 	new switched;
 	
-}
-
-TwoTeam_ScrambleByPlugin(playersToMove, playersToBalance, teamToBalanceTo)
-{
-	new switched;
-	
+	return switched;
 }
 
 GetPlayers(team, players[])

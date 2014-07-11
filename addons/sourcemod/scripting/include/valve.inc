@@ -6,9 +6,11 @@
 #endif
 #define _valve_included
 
+#define SNDCHAN_VOICE2		7
+
 #define HUD_PRINTNOTIFY		1
-#define HUD_PRINTCONSOLE		2
-#define HUD_PRINTTALK			3
+#define HUD_PRINTCONSOLE	2
+#define HUD_PRINTTALK		3
 #define HUD_PRINTCENTER		4
 
 // Print a Valve translation phrase to a group of players
