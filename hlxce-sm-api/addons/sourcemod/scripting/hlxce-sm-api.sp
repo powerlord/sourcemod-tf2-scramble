@@ -24,7 +24,7 @@
 #include <sourcemod>
  
 #define NAME "HLstatsX:CE SQL API for Sourcemod"
-#define VERSION "0.4 alpha"
+#define VERSION "0.5 alpha"
  
 #define RANKINGTYPE_SKILL 0
 #define RANKINGTYPE_KILLS 1
@@ -45,7 +45,7 @@ enum HLXCE_PlayerData
  
 public Plugin:myinfo = {
 	name = NAME,
-	author = "psychonic",
+	author = "psychonic // Fix by DoPe^",
 	description = "Provides easy access to HLX:CE data via Sourcemod",
 	version = VERSION,
 	url = "http://www.hlxcommunity.com"
@@ -54,7 +54,7 @@ public Plugin:myinfo = {
 new g_iClientHLXPlayerId[MAXPLAYERS+1] = { -1, ... };
 new Handle:g_hFwdHLXClientReady;
 new Handle:g_hFwdHLXGotPlayerData;
-new Handle:g_hHLXDatabase;
+new Handle:g_hHLXDatabase = INVALID_HANDLE;
 new Handle:g_hCvarServerIp;
 new Handle:g_hCvarServerPort;
 new Handle:g_hCvarGameCode;
@@ -77,6 +77,9 @@ public OnPluginStart()
 	
 	g_hFwdHLXClientReady = CreateGlobalForward("HLXCE_OnClientReady", ET_Ignore, Param_Cell);
 	g_hFwdHLXGotPlayerData = CreateGlobalForward("HLXCE_OnGotPlayerData", ET_Ignore, Param_Cell, Param_Array);
+
+	// Initiate Database
+	InitDB();
 }
 
 #if SOURCEMOD_V_MAJOR >= 1 && SOURCEMOD_V_MINOR >= 3
@@ -97,7 +100,15 @@ public bool:AskPluginLoad(Handle:myself, bool:late, String:error[], err_max)
 #endif
 }
 
-public OnConfigsExecuted()
+//public OnConfigsExecuted()
+//{
+//	if (g_hHLXDatabase == INVALID_HANDLE)
+//	{
+//		SQL_TConnect(OnConnectedToDatabase, "hlxce");
+//	}
+//}
+
+public InitDB()
 {
 	if (g_hHLXDatabase == INVALID_HANDLE)
 	{
@@ -455,5 +466,22 @@ public OnGotPlayerRank(Handle:owner, Handle:hndl, const String:error[], any:user
 	else
 	{
 		ThrowError("Handle to GotPlayerData forward is invalid");
+	}
+}
+
+public OnPluginEnd()
+{
+	if (g_hHLXDatabase != INVALID_HANDLE)
+	{
+		CloseHandle(g_hHLXDatabase);
+		#if DEBUG == 1
+			LogToGame("[HLX-API] Connected to the Database - Closing Connection");
+		#endif
+	}
+	else
+	{
+		#if DEBUG == 1
+			LogToGame("[HLX-API] Not Connected to the Database");
+		#endif
 	}
 }
