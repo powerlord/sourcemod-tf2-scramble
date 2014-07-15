@@ -45,7 +45,7 @@ new String:g_ScrambleSounds[][] = { "vo/announcer_AM_TeamScramble01.wav", "vo/an
 #define SCRAMBLE_VOLUME SNDVOL_NORMAL
 #define SCRAMBLE_LEVEL SNDLEVEL_NORMAL
 #define SCRAMBLE_PITCH SNDPITCH_NORMAL
- 
+
 enum ScrambleType
 {
 	Scramble_Random,
@@ -55,8 +55,31 @@ enum ScrambleType
 	Scramble_Plugin
 }
 
+enum ScrambleResponse
+{
+	ScrambleResponse_Waiting,
+	ScrambleResponse_Time,
+	ScrambleResponse_Round,
+	ScrambleResponse_Failed,
+	ScrambleResponse_AlreadyVoted,
+	ScrambleResponse_Pending,
+	ScrambleResponse_Disabled,
+	
+}
+
+enum ScrambleVoteTime
+{
+	ScrambleVote_Immediate,
+	ScrambleVote_Round
+}
+
 new g_PlayerConnectTime[MAXPLAYERS+1];
- 
+
+new bool:g_bScrambleVotes[MAXPLAYERS+1]; // This is for in-line scramble votes
+new g_LastScrambleTime = 0;
+new bool:g_bScrambledThisRound = false;
+new bool:g_bScramblePending = false;
+
 stock SetPlayerConnectTime(client)
 {
 	g_PlayerConnectTime[client] = GetTime();
@@ -71,7 +94,258 @@ stock GetPlayerConnectTime(client)
 {
 	return g_PlayerConnectTime[client];
 }
- 
+
+stock SetScrambledThisRound(bool:scrambled)
+{
+	g_bScrambledThisRound = scrambled;
+}
+
+stock bool:GetScrambledThisRound()
+{
+	return g_bScrambledThisRound;
+}
+
+stock SetLastScrambleTime()
+{
+	g_LastScrambleTime = GetTime();
+}
+
+stock GetLastScrambleTime()
+{
+	return g_LastScrambleTime;
+}
+
+stock GetScramblePending()
+{
+	return g_bScramblePending;
+}
+
+stock SetScrambleVote(client, bool:vote)
+{
+	g_bScrambleVotes[client] = vote;
+}
+
+stock GetScrambleVote(client)
+{
+	return g_bScrambleVotes[client];
+}
+
+bool:InlineScrambleVote(client, bool:bNativeVotes)
+{
+	if (!GetConVarBool(g_Cvar_Enabled))
+	{
+		return false;
+	}
+	
+	if (g_bWaitingForPlayers)
+	{
+		if (bNativeVotes)
+		{
+			NativeVotes_DisplayCallVoteFail(client, NativeVotesCallFail_Waiting);
+		}
+		
+		ReplyToCommand(client, "%t", "CallVote_WaitingForPlayers");
+		return false;
+	}
+
+	if ((g_bUseNativeVotes && NativeVotes_IsVoteInProgress()) || (!g_bUseNativeVotes && IsVoteInProgress()))
+	{
+		// No Nativevotes panel here as it'd hide the vote panel if showing
+		ReplyToCommand(client, "%t", "Vote in Progress");
+		return false;
+	}
+	
+	if (!GetConVarBool(g_Cvar_Scramble) || !GetConVarBool(g_Cvar_VoteScramble))
+	{
+		if (bNativeVotes)
+		{
+			NativeVotes_DisplayCallVoteFail(client, NativeVotesCallFail_Disabled);
+		}
+		ReplyToCommand(client, "%t", "ScrambleVote_Disabled");
+		return false;
+	}
+	
+	if (GetScramblePending())
+	{
+		if (bNativeVotes)
+		{
+			NativeVotes_DisplayCallVoteFail(client, NativeVotesCallFail_ScramblePending);
+		}
+		ReplyToCommand(client, "%t", "CallVote_Pending");
+		return false;
+	}
+	
+	if (GetScrambledThisRound())
+	{
+		if (bNativeVotes)
+		{
+			NativeVotes_DisplayCallVoteFail(client, NativeVotesCallFail_Disabled);
+		}
+		ReplyToCommand(client, "%t", "CallVote_DisabledRound");
+		return false;
+	}
+	
+	new remaining = GetLastScrambleTime() + GetConVarInt(g_Cvar_Scramble_Delay) - GetTime();
+	if (remaining > 0)
+	{
+		if (bNativeVotes)
+		{
+			NativeVotes_DisplayCallVoteFail(client, NativeVotesCallFail_Failed, remaining);
+		}
+		ReplyToCommand(client, "%t", "CallVote_DisabledTime");
+		return false;
+	}
+	
+	if (g_bScrambleVotes[client] == true)
+	{
+		if (bNativeVotes)
+		{
+			NativeVotes_DisplayCallVoteFail(client, NativeVotesCallFail_Generic);
+		}
+		ReplyToCommand(client, "%t", "CallVote_Already");
+		return false;
+	}
+	
+	g_bScrambleVotes[client] = true;
+	
+	CheckVotes();
+	
+	return true;
+}
+
+CheckVotes()
+{
+	new count = 0;
+	new votes = 0;
+	
+	new Float:percent = GetConVarFloat(g_Cvar_Vote_Public);
+	for (new client = 1; client <= MaxClients; client++)
+	{
+		if (IsClientConnected(client))
+		{
+			count++;
+			if (g_bScrambleVotes[client])
+			{
+				votes++;
+			}
+		}
+	}
+
+	if (count == 0)
+	{
+		return false;
+	}
+	
+	new Float:total = float(votes) / float(count);
+	// Subtract 0.01 for float rounding stuffs
+	if (total >= (percent - 0.01))
+	{
+		new ScrambleVoteTime:when = ScrambleVoteTime:GetConVarInt(g_Cvar_Vote_Change);
+		new Handle:vote;
+		if (g_bUseNativeVotes)
+		{
+			new NativeVotesType:voteType;
+			switch (when)
+			{
+				case ScrambleVote_Immediate:
+				{
+					voteType = NativeVotesType_ScrambleNow;
+				}
+				
+				case ScrambleVote_Round:
+				{
+					voteType = NativeVotesType_ScrambleEnd;
+				}
+			}
+			
+			vote = NativeVotes_Create(Handler_NativeScrambleMenu, voteType, NATIVEVOTES_ACTIONS_DEFAULT);
+			NativeVotes_SetResultCallback(vote, Handler_NativeScrambleVote);
+			NativeVotes_DisplayToAll(vote, GetConVarInt(g_Cvar_Vote_Time));
+		}
+		else
+		{
+			vote = CreateMenu(Handler_ScrambleMenu, MENU_ACTIONS_DEFAULT|MenuAction_Display|MenuAction_DisplayItem);
+			SetVoteResultCallback(vote, Handler_ScrambleVote);
+			AddMenuItem(vote, "#yes", "Yes");
+			AddMenuItem(vote, "#no", "No");
+			switch (when)
+			{
+				case ScrambleVote_Immediate:
+				{
+					SetMenuTitle(vote, "Scramble_Immediate");
+				}
+				
+				case ScrambleVote_Round:
+				{
+					SetMenuTitle(vote, "Scramble_Round");
+				}
+			}
+			VoteMenuToAll(vote, GetConVarInt(g_Cvar_Vote_Time));
+		}
+	}
+}
+
+public Handler_NativeScrambleMenu(Handle:vote, MenuAction:action, param1, param2)
+{
+}
+
+public Handler_NativeScrambleVote(Handle:vote,
+							num_votes, 
+							num_clients,
+							const client_indexes[],
+							const client_votes[],
+							num_items,
+							const item_indexes[],
+							const item_votes[])
+{
+	new bool:yesWon = false;
+	if (item_indexes[0] == NATIVEVOTES_VOTE_YES)
+	{
+		new Float:minimum = GetConVarFloat(g_Cvar_Vote_Percent);
+		
+	}
+	
+	if (yesWon)
+	{
+		NativeVotes_DisplayPass(vote);
+	}
+	else
+	{
+		NativeVotes_DisplayFail(vote, NativeVotesFail_Loses);
+	}
+}
+
+public Handler_ScrambleMenu(Handle:vote, MenuAction:action, param1, param2)
+{
+	
+}
+
+public Handler_ScrambleVote(Handle:vote,
+							num_votes, 
+							num_clients,
+							const client_info[][2], 
+							num_items,
+							const item_info[][2])
+{
+	new bool:yesWon = false;
+	
+	decl String:winner[5];
+	GetMenuItem(vote, item_info[0][VOTEINFO_ITEM_VOTES], winner, sizeof(winner));
+	
+	if (StrEqual(winner, "#yes"))
+	{
+		new Float:minimum = GetConVarFloat(g_Cvar_Vote_Percent);
+		
+	}
+	
+	if (yesWon)
+	{
+	}
+	else
+	{
+	}
+}
+
 PostRoundScrambleCheck()
 {
 	if (ShouldScrambleTeams())
@@ -93,6 +367,7 @@ PostRoundScrambleCheck()
 //void CTeamplayRules::SetScrambleTeams( bool bScramble )
 stock SetScrambleTeams(bool:bScramble)
 {
+	g_bScramblePending = true;
 	SDKCall(g_Call_SetScramble, bScramble);
 }
 
@@ -119,6 +394,9 @@ bool:ShouldScrambleTeams()
 
 stock ForceScramble()
 {
+	SetLastScrambleTime();
+	SetScrambledThisRound(true);
+	
 	new time = 5; // Fix this later, this is just here so we have this code when we need it.
 	
 	if (time > 1)
@@ -150,7 +428,8 @@ public MRESReturn:HandleScrambleTeams(Handle:hParams)
 	}
 	
 	new switched = 0;
-	
+
+	SetLastScrambleTime();
 	
 	new teamNum = GetTeamCount();
 	new teamCounts[teamNum];
@@ -333,4 +612,24 @@ GetPlayerKDR(Float:kdr[], const players[], count)
 	}
 }
 
+PrecacheScrambleSounds()
+{
+#if SOURCEMOD_V_MAJOR > 1 || (SOURCEMOD_V_MAJOR == 1 && SOURCEMOD_V_MINOR >= 7)
+	PrecacheScriptScound("Announcer.AM_TeamScrambleRandom");
+#else
+	for (new i = 0; i < sizeof(g_ScrambleSounds); i++)
+	{
+		PrecacheSound(g_ScrambleSounds[i]);
+	}
+#endif
+}
 
+PlayScrambleSound()
+{
+#if SOURCEMOD_V_MAJOR > 1 || (SOURCEMOD_V_MAJOR == 1 && SOURCEMOD_V_MINOR >= 7)
+	EmitGameSoundToAll("Announcer.AM_TeamScrambleRandom");
+#else		
+	new random = GetRandomInt(0, sizeof(g_ScrambleSounds) - 1);
+	EmitSoundToAll(g_ScrambleSounds[random], SOUND_FROM_PLAYER, SCRAMBLE_CHANNEL, SCRAMBLE_LEVEL, SND_NOFLAGS, SCRAMBLE_VOLUME, SCRAMBLE_PITCH);
+#endif
+}

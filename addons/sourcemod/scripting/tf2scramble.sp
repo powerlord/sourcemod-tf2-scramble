@@ -142,6 +142,12 @@ new Handle:g_Cvar_Autobalance_ForceTime;
 new Handle:g_Cvar_Scramble_Percent;
 new Handle:g_Cvar_NativeVotes;
 new Handle:g_Cvar_NativeVotes_Menu;
+new Handle:g_Cvar_Scramble_Delay;
+new Handle:g_Cvar_Scramble_Round;
+new Handle:g_Cvar_Vote_Percent;
+new Handle:g_Cvar_Vote_Public;
+new Handle:g_Cvar_Vote_Time;
+new Handle:g_Cvar_Vote_Change;
 
 // Valve CVars
 new Handle:g_Cvar_Mp_Autobalance; // mp_autobalance
@@ -201,15 +207,21 @@ public OnPluginStart()
 	g_Cvar_Balance = CreateConVar("tf2scramble_balance", "1", "Enable TF2 Scramble's balance abilities?", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_Cvar_VoteScramble = CreateConVar("tf2scramble_vote", "1", "Enable our own vote scramble?  Will disable Valve's votescramble.", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_Cvar_ScrambleMode = CreateConVar("tf2scramble_mode", "1", "Scramble Mode: 0 = Random, 1 = Score, 2 = Score Per Minute, 3 = Kill/Death Ratio, 4 = Use Subplugin settings (acts like 0 if no subplugins loaded)", FCVAR_PLUGIN|FCVAR_NOTIFY, true, 0.0, true, 4.0);
-	g_Cvar_Immunity_Class = CreateConVar("tf2scramble_class_immunity", "1", "Should Medics with 50%+ Uber or Engineers with Level 2+ Buildings be immune to autobalance? Note: Only applies to autobalancing and if we run out of other players, they WILL be balanced.", FCVAR_PLUGIN, true, 0.0, true, 1.0);
-	g_Cvar_Immunity_Duel = CreateConVar("tf2scramble_duel_immunity", "1", "Should dueling players be immune to autobalance? Note: Only applies to autobalancing and if we run out of other players, they WILL be balanced. Scored lower than Engy/Medic", FCVAR_PLUGIN, true, 0.0, true, 1.0);
-	g_Cvar_Immunity_Time = CreateConVar("tf2scramble_time_immunity", "180", "Players will be immune from balancing a second time for this many seconds.  Ignored if all players are marked as immune. Set to 0 to disable.", FCVAR_PLUGIN, true, 0.0, true, 300.0);
+	g_Cvar_Immunity_Class = CreateConVar("tf2scramble_balance_class_immunity", "1", "Should Medics with 50%+ Uber or Engineers with Level 2+ Buildings be immune to autobalance? Note: Only applies to autobalancing and if we run out of other players, they WILL be balanced.", FCVAR_PLUGIN, true, 0.0, true, 1.0);
+	g_Cvar_Immunity_Duel = CreateConVar("tf2scramble_balance_duel_immunity", "1", "Should dueling players be immune to autobalance? Note: Only applies to autobalancing and if we run out of other players, they WILL be balanced. Scored lower than Engy/Medic", FCVAR_PLUGIN, true, 0.0, true, 1.0);
+	g_Cvar_Immunity_Time = CreateConVar("tf2scramble_balance_time_immunity", "180", "Players will be immune from balancing a second time for this many seconds.  Ignored if all players are marked as immune. Set to 0 to disable.", FCVAR_PLUGIN, true, 0.0, true, 300.0);
 	g_Cvar_Timeleft = CreateConVar("tf2scramble_timeleft", "60", "If there is less than this much or less sectonds left on a timer, stop balancing. Ignored on Arena and KOTH. Set to 0 to disable.", FCVAR_PLUGIN, true, 0.0, true, 180.0);
 	g_Cvar_Autobalance_Time = CreateConVar("tf2scramble_autobalance_time", "5", "Seconds before autobalance should occur once detected... only for dead players.", FCVAR_PLUGIN, true, 5.0, true, 30.0);
 	g_Cvar_Autobalance_ForceTime = CreateConVar("tf2scramble_autobalance_forcetime", "15", "Seconds before autobalance should be forced if no one on a team dies.", FCVAR_PLUGIN, true, 5.0, true, 30.0);
 	g_Cvar_Scramble_Percent = CreateConVar("tf2scramble_scramble_percent", "0.50", "What percentage of players should be scrambled?", FCVAR_PLUGIN, true, 0.10, true, 0.90);
 	g_Cvar_NativeVotes = CreateConVar("tf2scramble_nativevotes", "1", "Use NativeVotes for votes if available? (Why would you ever disable this?)", FCVAR_PLUGIN, true, 0.0, true, 1.0);
 	g_Cvar_NativeVotes_Menu = CreateConVar("tf2scramble_nativevotes_menu", "1", "Put ScrambleTeams vote in NativeVotes menu?", FCVAR_PLUGIN, true, 0.0, true, 1.0);
+	g_Cvar_Scramble_Delay = CreateConVar("tf2scramble_scramble_delay", "300", "How long in seconds after a scramble happens or scramble vote fails should we prevent a scramble vote?", FCVAR_PLUGIN, true, 1.0);
+	g_Cvar_Scramble_Round = CreateConVar("tf2scramble_scramble_round", "1", "After a successful scramble vote, require a round change before another scramble vote can happen? 1 = yes, 0 = no", FCVAR_PLUGIN, true, 0.0, true, 1.0);
+	g_Cvar_Vote_Percent = CreateConVar("tf2scramble_vote_percent", "0.50", "What percent of people need to vote Yes for scramble vote to pass?", FCVAR_PLUGIN, true, 0.10, true, 1.0);
+	g_Cvar_Vote_Public = CreateConVar("tf2scramble_vote_public", "0.30", "What percent of people need to use the votescramble command before a vote starts?", FCVAR_PLUGIN, true, 0.10, true, 1.0);
+	g_Cvar_Vote_Time = CreateConVar("tf2scramble_vote_time", "20", "How long should a scramble vote last in seconds?", FCVAR_PLUGIN, true, 5.0, true, 30.0);
+	g_Cvar_Vote_Change = CreateConVar("tf2scramble_vote_change", "0", "When should a scramble vote take effect?  0 = Immediate, 1 = At round change?", FCVAR_PLUGIN, true, 0.0, true, 1.0);
 	
 	// Add more cvars
 	
@@ -266,6 +278,7 @@ public OnPluginStart()
 public OnMapStart()
 {
 	DHookGamerules(g_Hook_HandleScramble, false);
+	PrecacheScrambleSounds();
 }
 
 public OnConfigsExecuted()
@@ -347,7 +360,8 @@ public OnLibraryRemoved(const String:name[])
 		
 		if (g_bNativeVotesRegisteredMenus)
 		{
-			NativeVotes_UnregisterVoteCommand("ScrambleTeams", NativeVotes_Menu);
+			// Why are we trying to unregister this when NativeVotes went away?
+			//NativeVotes_UnregisterVoteCommand("ScrambleTeams", NativeVotes_Menu);
 			g_bNativeVotesRegisteredMenus = false;
 		}
 	}
@@ -370,11 +384,11 @@ public Action:Timer_CheckNativeVotes(Handle:Timer)
 
 public Action:NativeVotes_Menu(client, const String:voteCommand[], const String:voteArgument[], NativeVotesKickType:kickType, target)
 {
-	if (!IsFakeClient(client))
+	if (!IsFakeClient(client) && client != 0)
 	{
 		new ReplySource:old = SetCmdReplySource(SM_REPLY_TO_CHAT);
 
-		// start vote
+		InlineScrambleVote(client, true);
 
 		SetCmdReplySource(old);
 	}
@@ -386,7 +400,7 @@ public Action:OnClientSayCommand(client, const String:command[], const String:sA
 {
 	if (StrEqual(command, "votescramble", false))
 	{
-		// Do votescramble action
+		InlineScrambleVote(client, false);
 		return Plugin_Handled;
 	}
 	
@@ -399,11 +413,13 @@ public OnClientConnected(client)
 	SetPlayerConnectTime(client);
 }
 
-public OnClientDisconnect(client)
+public OnClientDisconnected(client)
 {
 	// We don't really need to reset it on both connect AND disconnect, but eh...
 	ClearLastBalancedTime(client);
 	ClearPlayerConnectTime(client);
+	SetScrambleVote(client, false);
+	CheckVotes();
 }
 
 public TF2_OnWaitingForPlayersStart()
@@ -424,6 +440,7 @@ public Event_Round_Start(Handle:event, const String:name[], bool:dontBroadcast)
 	}
 	
 	CreateAutobalanceTimer();
+	SetScrambledThisRound(false);
 }
 
 public Event_Round_End(Handle:event, const String:name[], bool:dontBroadcast)

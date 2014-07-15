@@ -1,0 +1,34 @@
+"Phrases"
+{
+	"ScrambleVote_Disabled"
+	{
+		"en"	"Scramble voting is disabled."
+	}
+
+	"CallVote_WaitingForPlayers"
+	{
+		"en"	"Voting not allowed while Waiting for Players"
+	}
+
+	"CallVote_DisabledRound"
+	{
+		"en"	"Scramble voting is disabled until after the next round change."
+	}
+
+	"CallVote_DisabledTime"
+	{
+		"#format"	"{1:d}"
+		"en"	"Scramble voting is delayed for {1} seconds."
+	}
+
+	"CallVote_Pending"
+	{
+		"en"	"Teams will scramble at the end of the round."
+	}
+
+	"CallVote_Already"
+	{
+		"en"	"You already voted."
+	}
+
+}
