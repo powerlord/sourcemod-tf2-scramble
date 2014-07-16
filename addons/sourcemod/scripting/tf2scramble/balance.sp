@@ -54,6 +54,8 @@ new BalancingType:g_WeAreBalancing = Balancing_None;
 // Store times from GetTime here
 new g_LastBalanced[MAXPLAYERS+1] = { 0, ... };
 
+new g_NextBalanceChangeTime = 0;
+
 CreateAutobalanceTimer()
 {
 	g_Timer_Autobalance = CreateTimer(5.0, Timer_Autobalance, _, TIMER_REPEAT);	
@@ -78,23 +80,42 @@ public Action:Timer_Autobalance(Handle:Timer)
 		return Plugin_Continue;
 	}
 	
+	// Should we switch balance modes?
+	if (g_NextBalanceChangeTime > 0 && g_NextBalanceChangeTime <= GetTime())
+	{
+		if (g_WeAreBalancing == Balancing_None)
+		{
+			g_WeAreBalancing = Balancing_Normal;
+			g_NextBalanceChangeTime = GetTime() + GetConVarInt(g_Cvar_Autobalance_ForceTime) - GetConVarInt(g_Cvar_Autobalance_Time);
+		}
+		else
+		if (g_WeAreBalancing == Balancing_Normal)
+		{
+			g_WeAreBalancing = Balancing_Force;
+			g_NextBalanceChangeTime = 0;
+		}
+	}
+	
 	// We already determined teams were unbalanced and are waiting the delay period
 	// This logic should probably move to its OWN timer, which is just checked to see if it needs canceling here.
 	if (g_WeAreBalancing == Balancing_Normal)
 	{
 		BalanceTeams();
-		return Plugin_Continue;
 	}
-	
+	else
 	if (g_WeAreBalancing == Balancing_Force)
 	{
 		BalanceTeams(true);
-		return Plugin_Continue;
 	}
-	
+	else
 	if (!AreTeamsBalanced())
 	{
+		decl String:timeStr[5];
 		// Teams are now unbalanced
+		new time = GetConVarInt(g_Cvar_Autobalance_Time);
+		IntToString(time, timeStr, sizeof(timeStr));
+		g_NextBalanceChangeTime = GetTime() + time;
+		PrintValveTranslationToAll(HUD_PRINTTALK, "#game_auto_team_balance_in", timeStr);
 	}
 	
 	return Plugin_Continue;

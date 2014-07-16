@@ -281,6 +281,11 @@ public OnMapStart()
 	PrecacheScrambleSounds();
 }
 
+public OnMapEnd()
+{
+	StopScrambleTimer();
+}
+
 public OnConfigsExecuted()
 {
 	g_bUseNativeVotes = GetConVarBool(g_Cvar_NativeVotes) && LibraryExists("nativevotes");
@@ -440,6 +445,7 @@ public Event_Round_Start(Handle:event, const String:name[], bool:dontBroadcast)
 	}
 	
 	CreateAutobalanceTimer();
+
 	SetScrambledThisRound(false);
 }
 
@@ -453,6 +459,7 @@ public Event_Round_End(Handle:event, const String:name[], bool:dontBroadcast)
 	RemoveAutobalanceTimer();
 	
 	PostRoundScrambleCheck();
+	StopScrambleTimer();
 }
 
 // If you're using this, one or both of the last two args should be true,

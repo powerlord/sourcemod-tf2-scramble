@@ -40,11 +40,18 @@
  * Version: $Id$
  */
 
+new Handle:g_ScrambleTimer = INVALID_HANDLE;
+
 new String:g_ScrambleSounds[][] = { "vo/announcer_AM_TeamScramble01.wav", "vo/announcer_AM_TeamScramble02.wav", "vo/announcer_AM_TeamScramble03.wav" };
 #define SCRAMBLE_CHANNEL SNDCHAN_VOICE2
 #define SCRAMBLE_VOLUME SNDVOL_NORMAL
 #define SCRAMBLE_LEVEL SNDLEVEL_NORMAL
 #define SCRAMBLE_PITCH SNDPITCH_NORMAL
+
+#define YES_ITEM "#yes"
+#define NO_ITEM "#no"
+
+#define SCRAMBLE_TIME 5
 
 enum ScrambleType
 {
@@ -175,7 +182,7 @@ bool:InlineScrambleVote(client, bool:bNativeVotes)
 		return false;
 	}
 	
-	if (GetScrambledThisRound())
+	if (GetConVarBool(g_Cvar_Scramble_Round) && GetScrambledThisRound())
 	{
 		if (bNativeVotes)
 		{
@@ -233,7 +240,7 @@ CheckVotes()
 
 	if (count == 0)
 	{
-		return false;
+		return;
 	}
 	
 	new Float:total = float(votes) / float(count);
@@ -266,18 +273,18 @@ CheckVotes()
 		{
 			vote = CreateMenu(Handler_ScrambleMenu, MENU_ACTIONS_DEFAULT|MenuAction_Display|MenuAction_DisplayItem);
 			SetVoteResultCallback(vote, Handler_ScrambleVote);
-			AddMenuItem(vote, "#yes", "Yes");
-			AddMenuItem(vote, "#no", "No");
+			AddMenuItem(vote, YES_ITEM, "Yes");
+			AddMenuItem(vote, NO_ITEM, "No");
 			switch (when)
 			{
 				case ScrambleVote_Immediate:
 				{
-					SetMenuTitle(vote, "Scramble_Immediate");
+					SetMenuTitle(vote, "ScrambleVote_Immediate");
 				}
 				
 				case ScrambleVote_Round:
 				{
-					SetMenuTitle(vote, "Scramble_Round");
+					SetMenuTitle(vote, "ScrambleVote_Round");
 				}
 			}
 			VoteMenuToAll(vote, GetConVarInt(g_Cvar_Vote_Time));
@@ -287,6 +294,30 @@ CheckVotes()
 
 public Handler_NativeScrambleMenu(Handle:vote, MenuAction:action, param1, param2)
 {
+	switch (action)
+	{
+		case MenuAction_End:
+		{
+			// Prevent leak
+			CloseHandle(vote);
+		}
+		
+		case MenuAction_VoteCancel:
+		{
+			switch (param1)
+			{
+				case VoteCancel_Generic:
+				{
+					NativeVotes_DisplayFail(vote, NativeVotesFail_Generic);
+				}
+				
+				case VoteCancel_NoVotes:
+				{
+					NativeVotes_DisplayFail(vote, NativeVotesFail_Loses);
+				}
+			}
+		}
+	}
 }
 
 public Handler_NativeScrambleVote(Handle:vote,
@@ -308,16 +339,57 @@ public Handler_NativeScrambleVote(Handle:vote,
 	if (yesWon)
 	{
 		NativeVotes_DisplayPass(vote);
+		ForceScramble();
+		// Print message here
 	}
 	else
 	{
 		NativeVotes_DisplayFail(vote, NativeVotesFail_Loses);
+		// Print message here
 	}
 }
 
 public Handler_ScrambleMenu(Handle:vote, MenuAction:action, param1, param2)
 {
-	
+	switch (action)
+	{
+		case MenuAction_Display:
+		{
+			// The menu title is actually its translation phrase
+			decl String:menuString[64];
+			GetMenuTitle(vote, menuString, sizeof(menuString));
+			decl String:menuTitle[64];
+			Format(menuTitle, sizeof(menuTitle), "%T", menuString, param1);
+			
+			new Handle:panel = Handle:param2;
+			SetPanelTitle(panel, menuTitle);
+		}
+		
+		case MenuAction_End:
+		{
+			// Prevent leak
+			CloseHandle(vote);
+		}
+		
+		case MenuAction_DisplayItem:
+		{
+			decl String:menuItem[5];
+			GetMenuItem(vote, param2, menuItem, sizeof(menuItem));
+			
+			decl String:display[25];
+			if (StrEqual(menuItem, YES_ITEM))
+			{
+				Format(display, sizeof(display), "%T", "Yes", param1);
+				return RedrawMenuItem(display);
+			}
+			else if (StrEqual(menuItem, NO_ITEM))
+			{
+				Format(display, sizeof(display), "%T", "No", param1);
+				return RedrawMenuItem(display);
+			}
+		}
+	}
+	return 0;
 }
 
 public Handler_ScrambleVote(Handle:vote,
@@ -332,7 +404,7 @@ public Handler_ScrambleVote(Handle:vote,
 	decl String:winner[5];
 	GetMenuItem(vote, item_info[0][VOTEINFO_ITEM_VOTES], winner, sizeof(winner));
 	
-	if (StrEqual(winner, "#yes"))
+	if (StrEqual(winner, YES_ITEM))
 	{
 		new Float:minimum = GetConVarFloat(g_Cvar_Vote_Percent);
 		
@@ -340,9 +412,12 @@ public Handler_ScrambleVote(Handle:vote,
 	
 	if (yesWon)
 	{
+		ForceScramble();
+		// Print message here
 	}
 	else
 	{
+		// Print message here
 	}
 }
 
@@ -388,17 +463,23 @@ bool:ShouldScrambleTeams()
 		return false;
 	}
 	
-	// Logic to determine if we should scramble here
+	if (IsScrambleTimerActive())
+	{
+		return true;
+	}
+	
+	// TODO: Logic to determine if we should scramble here
+	// This will likely need lots of new cvars for scramble criteria
+	
 	return false;
 }
 
 stock ForceScramble()
 {
-	SetLastScrambleTime();
+	new String:pFormat[64];
 	SetScrambledThisRound(true);
 	
-	new time = 5; // Fix this later, this is just here so we have this code when we need it.
-	
+	new time = SCRAMBLE_TIME;
 	if (time > 1)
 	{
 		pFormat = "#game_scramble_in_secs";
@@ -417,18 +498,35 @@ stock ForceScramble()
 	TF2_SendScrambleAlert();
 	
 	// Logic to start timer before forcing scramble here
+	g_ScrambleTimer = CreateTimer(float(SCRAMBLE_TIME), Timer_Scramble);
+}
+
+public Action:Timer_Scramble(Handle:timer)
+{
+	g_ScrambleTimer = INVALID_HANDLE;
+	Internal_HandleScramble();
 }
 
 // void CTeamplayRules::HandleScrambleTeams( void )
 public MRESReturn:HandleScrambleTeams(Handle:hParams)
 {
-	if (!GetConVarBool(g_Cvar_Enabled) || !GetConVarBool(g_Cvar_Scramble))
+	if (!Internal_HandleScramble())
 	{
 		return MRES_Ignored;
 	}
+
+	return MRES_Supercede;
+}
+
+bool:Internal_HandleScramble()
+{
+	if (!GetConVarBool(g_Cvar_Enabled) || !GetConVarBool(g_Cvar_Scramble))
+	{
+		return false;
+	}
 	
 	new switched = 0;
-
+	
 	SetLastScrambleTime();
 	
 	new teamNum = GetTeamCount();
@@ -493,12 +591,12 @@ public MRESReturn:HandleScrambleTeams(Handle:hParams)
 	{
 		// Worry about more teams later
 	}
-
 	
-
+	
+	
 	// As far as I can tell, the last arg should be true during a balance/scramble
 	// SwitchTeam(client, iTeamNum, false, true);
-	return MRES_Supercede;
+	return true;
 }
 
 ScrambleByRandom(playersToMove, playersToBalance, teamToBalanceFrom, teamToBalanceTo, bool:oddPlayerCount)
@@ -612,7 +710,7 @@ GetPlayerKDR(Float:kdr[], const players[], count)
 	}
 }
 
-PrecacheScrambleSounds()
+stock PrecacheScrambleSounds()
 {
 #if SOURCEMOD_V_MAJOR > 1 || (SOURCEMOD_V_MAJOR == 1 && SOURCEMOD_V_MINOR >= 7)
 	PrecacheScriptScound("Announcer.AM_TeamScrambleRandom");
@@ -624,7 +722,7 @@ PrecacheScrambleSounds()
 #endif
 }
 
-PlayScrambleSound()
+stock PlayScrambleSound()
 {
 #if SOURCEMOD_V_MAJOR > 1 || (SOURCEMOD_V_MAJOR == 1 && SOURCEMOD_V_MINOR >= 7)
 	EmitGameSoundToAll("Announcer.AM_TeamScrambleRandom");
@@ -632,4 +730,18 @@ PlayScrambleSound()
 	new random = GetRandomInt(0, sizeof(g_ScrambleSounds) - 1);
 	EmitSoundToAll(g_ScrambleSounds[random], SOUND_FROM_PLAYER, SCRAMBLE_CHANNEL, SCRAMBLE_LEVEL, SND_NOFLAGS, SCRAMBLE_VOLUME, SCRAMBLE_PITCH);
 #endif
+}
+
+stock bool:IsScrambleTimerActive()
+{
+	return (g_ScrambleTimer != INVALID_HANDLE);
+}
+
+stock StopScrambleTimer()
+{
+	if (g_ScrambleTimer != INVALID_HANDLE)
+	{
+		CloseHandle(g_ScrambleTimer);
+		g_ScrambleTimer = INVALID_HANDLE;
+	}
 }

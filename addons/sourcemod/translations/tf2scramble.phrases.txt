@@ -5,6 +5,16 @@
 		"en"	"Scramble voting is disabled."
 	}
 
+	"ScrambleVote_Immediate"
+	{
+		"en"	"Scramble teams immediately?"
+	}
+
+	"ScrambleVote_Round"
+	{
+		"en"	"Scramble teams at the end of the round?"
+	}
+
 	"CallVote_WaitingForPlayers"
 	{
 		"en"	"Voting not allowed while Waiting for Players"
