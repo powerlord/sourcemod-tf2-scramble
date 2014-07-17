@@ -333,7 +333,11 @@ public Handler_NativeScrambleVote(Handle:vote,
 	if (item_indexes[0] == NATIVEVOTES_VOTE_YES)
 	{
 		new Float:minimum = GetConVarFloat(g_Cvar_Vote_Percent);
-		
+		new Float:percent = float(item_votes[0]) / float(num_votes);
+		if (percent >= (minimum - 0.001))
+		{
+			yesWon = true;
+		}
 	}
 	
 	if (yesWon)
@@ -407,7 +411,12 @@ public Handler_ScrambleVote(Handle:vote,
 	if (StrEqual(winner, YES_ITEM))
 	{
 		new Float:minimum = GetConVarFloat(g_Cvar_Vote_Percent);
-		
+		new Float:percent = float(item_info[VOTEINFO_ITEM_VOTES]) / float(num_votes);
+
+		if (percent >= (minimum - 0.001))
+		{
+			yesWon = true;
+		}
 	}
 	
 	if (yesWon)
