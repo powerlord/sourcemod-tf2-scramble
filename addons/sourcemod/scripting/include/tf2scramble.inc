@@ -114,9 +114,7 @@ public SharedPlugin:__pl_tf2scramble =
 #if !defined REQUIRE_PLUGIN
 public __pl_tf2scramble_SetNTVOptional()
 {
-	MarkNativeAsOptional("FunctionWithArg");
-	MarkNativeAsOptional("FunctionWithoutArg");
-	MarkNativeAsOptional("RegisterCallback");
-	MarkNativeAsOptional("UnregisterCallback");
+	MarkNativeAsOptional("TF2Scramble_GetPlayerBalanceScore");
+	MarkNativeAsOptional("TF2Scramble_GetTeamPlayerBalanceScores");
 }
 #endif
