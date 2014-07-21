@@ -369,7 +369,7 @@ GetPlayerBalanceValues(team, players[][], bool:force = false)
 	{
 		new immunityTime = GetConVarInt(g_Cvar_Immunity_Time);
 		
-		if (!IsClientInGame(client))
+		if (!IsClientInGame(client) || GetClientTeam(client) != team)
 		{
 			continue;
 		}

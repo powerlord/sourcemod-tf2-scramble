@@ -55,6 +55,7 @@
 //#include <gameme>
 //#include <hlxce-sm-api>
 
+#include "include/tf2scramble.inc"
 #include "include/valve.inc"
 
 #pragma semicolon 1
@@ -165,6 +166,9 @@ new bool:g_bNativeVotesRegisteredMenus = false;
 // We need to track this globally since we shut off on MvM and Arena.
 new bool:g_Enabled;
 
+// Forwards
+new Handle:g_Forward_ScramblePlugin;
+
 #include "tf2scramble/balance.sp"
 #include "tf2scramble/scramble.sp"
 
@@ -273,6 +277,8 @@ public OnPluginStart()
 #if defined DEBUG
 	RegAdminCmd("listimmunity", Cmd_ListImmunity, ADMFLAG_GENERIC, "List immunity values for all players as if \"force\" was on.");
 #endif
+
+	g_Forward_ScramblePlugin = CreateGlobalForward("TF2Scramble_ScramblePlugin", ET_Ignore, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_Cell, Param_CellByRef);
 }
 
 public OnMapStart()
@@ -571,18 +577,4 @@ public SortPlayerValuesDesc(elem1[], elem2[], const array[][], Handle:hndl)
 	{
 		return 0;
 	}
-}
-
-// Go Fish...er-Yates
-// 'cause we want a random ordering of items with the same value
-ShuffleArray(array[], count)
-{
-	for (new i = count - 1; i >= 1; i--)
-	{
-		new j = GetRandomInt(0, i);
-		new temp = array[i];
-		array[i] = array[j];
-		array[j] = temp;
-	}
-	
 }

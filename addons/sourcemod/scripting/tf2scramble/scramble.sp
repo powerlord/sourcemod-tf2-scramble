@@ -411,7 +411,7 @@ public Handler_ScrambleVote(Handle:vote,
 	if (StrEqual(winner, YES_ITEM))
 	{
 		new Float:minimum = GetConVarFloat(g_Cvar_Vote_Percent);
-		new Float:percent = float(item_info[VOTEINFO_ITEM_VOTES]) / float(num_votes);
+		new Float:percent = float(item_info[0][VOTEINFO_ITEM_VOTES]) / float(num_votes);
 
 		if (percent >= (minimum - 0.001))
 		{
@@ -679,6 +679,22 @@ ScrambleByKDR(playersToMove, playersToBalance, teamToBalanceFrom, teamToBalanceT
 ScrambleByPlugin(playersToMove, playersToBalance, teamToBalanceFrom, teamToBalanceTo, bool:oddPlayerCount)
 {
 	new switched;
+	
+	if (GetForwardFunctionCount(g_Forward_ScramblePlugin) == 0)
+	{
+		switched = ScrambleByRandom(playersToMove, playersToBalance, teamToBalanceFrom, teamToBalanceTo, oddPlayerCount);
+	}
+	else
+	{
+		Call_StartForward(g_Forward_ScramblePlugin);
+		Call_PushCell(playersToMove);
+		Call_PushCell(playersToBalance);
+		Call_PushCell(teamToBalanceFrom);
+		Call_PushCell(teamToBalanceTo);
+		Call_PushCell(oddPlayerCount);
+		Call_PushCellRef(switched);
+		Call_Finish();
+	}
 	
 	return switched;
 }
