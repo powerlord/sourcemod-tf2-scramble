@@ -18,6 +18,12 @@
 				"linux"		"162"
 			}
 
+			"CTeamplayRules::ShouldScrambleTeams"
+			{
+				"windows"	"162"
+				"linux"		"163"
+			}
+
 			"CTeamplayRules::HandleScrambleTeams"
 			{
 				"windows"	"163"
