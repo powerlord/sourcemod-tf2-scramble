@@ -14,14 +14,14 @@
 
 			"CTeamplayRules::SetScrambleTeams"
 			{
-				"windows"	"160"
-				"linux"		"161"
+				"windows"	"161"
+				"linux"		"162"
 			}
 
 			"CTeamplayRules::HandleScrambleTeams"
 			{
-				"windows"	"162"
-				"linux"		"163"
+				"windows"	"163"
+				"linux"		"164"
 			}
 		}
 	}
