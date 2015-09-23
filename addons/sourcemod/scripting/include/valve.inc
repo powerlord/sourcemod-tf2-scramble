@@ -28,7 +28,7 @@ stock PrintValveTranslation(clients[],
 	
 	if (GetUserMessageType() == UM_Protobuf)
 	{
-		PbSetInt(bf, "msg_dest", msg_dest);
+		PbSetInt(bf, "msg_dst", msg_dest);
 		PbAddString(bf, "params", msg_name);
 		
 		PbAddString(bf, "params", param1);
